@@ -642,7 +642,14 @@ export default function AIChat({
                     size="sm"
                     onClick={(e) => {
                       e.stopPropagation();
-                      // Hide chat only
+                      if (page) {
+                        // On dedicated chat page, close should leave the page
+                        // Prefer going back if possible; fallback to dashboard
+                        if (window.history.length > 1) navigate(-1);
+                        else navigate("/dashboard");
+                        return;
+                      }
+                      // In floating/docked mode, simply hide the chat
                       setIsFullScreen(false);
                       setIsOpen(false);
                     }}
