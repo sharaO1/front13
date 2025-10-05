@@ -99,6 +99,27 @@ function parseMarkdownTable(
   return null;
 }
 
+// Parse CSV/TSV simple tables (first line headers)
+function parseDelimitedTable(
+  text: string,
+): { columns: string[]; rows: any[] } | null {
+  const raw = text.trim();
+  const delimiter = raw.includes("\t") ? "\t" : raw.includes(";") ? ";" : raw.includes(",") ? "," : null;
+  if (!delimiter) return null;
+  const lines = raw.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (lines.length < 2) return null;
+  const columns = lines[0].split(delimiter).map((s) => s.trim());
+  if (columns.length < 2) return null;
+  const rows = lines.slice(1).map((ln) => {
+    const cells = ln.split(delimiter).map((s) => s.trim());
+    const obj: Record<string, string> = {};
+    columns.forEach((c, i) => (obj[c] = cells[i] ?? ""));
+    return obj;
+  });
+  if (!rows.length) return null;
+  return { columns, rows };
+}
+
 function getStructuredTable(
   text: string,
 ): { columns: string[]; rows: any[] } | null {
@@ -137,6 +158,9 @@ function getStructuredTable(
   // 2) Markdown table fallback
   const md = parseMarkdownTable(text);
   if (md) return md;
+  // 3) CSV/TSV fallback
+  const del = parseDelimitedTable(text);
+  if (del) return del;
   return null;
 }
 
@@ -145,7 +169,7 @@ function renderMessageContent(text: string) {
   if (table) {
     const { columns, rows } = table;
     return (
-      <div className="overflow-x-auto max-w-full">
+      <div className="overflow-x-auto max-w-full w-full">
         <Table>
           <TableHeader>
             <TableRow>
@@ -671,50 +695,62 @@ export default function AIChat({
                   onWheel={(e) => e.stopPropagation()}
                   onTouchMove={(e) => e.stopPropagation()}
                 >
-                  {messages.map((m) => (
-                    <div
-                      key={m.id}
-                      className={cn(
-                        "flex gap-2",
-                        m.role === "user" ? "justify-end" : "justify-start",
-                      )}
-                    >
-                      {m.role === "ai" && (
-                        <div className="mt-1 h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow">
-                          <Bot className="h-4 w-4 text-white" />
-                        </div>
-                      )}
+                  {messages.map((m) => {
+                    const table = m.role === "ai" ? getStructuredTable(m.text) : null;
+                    const isTable = !!table;
+                    return (
                       <div
+                        key={m.id}
                         className={cn(
-                          "max-w-[85%] rounded-2xl leading-relaxed shadow break-words whitespace-pre-wrap",
-                          isFullScreen
-                            ? "p-4 text-base max-w-[80%]"
-                            : "p-3 text-sm",
-                          m.role === "user"
-                            ? "bg-blue-600 text-white rounded-br-md"
-                            : "bg-white dark:bg-gray-800 border rounded-bl-md",
+                          "flex gap-2",
+                          m.role === "user" ? "justify-end" : "justify-start",
                         )}
                       >
-                        {m.role === "ai"
-                          ? renderMessageContent(m.text)
-                          : formatMessage(m.text)}
+                        {m.role === "ai" && (
+                          <div className="mt-1 h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow">
+                            <Bot className="h-4 w-4 text-white" />
+                          </div>
+                        )}
+                        <div
+                          className={cn(
+                            "rounded-2xl leading-relaxed shadow",
+                            isTable
+                              ? cn(
+                                  "bg-white dark:bg-gray-800 border rounded-bl-md max-w-full w-full",
+                                  isFullScreen ? "p-0" : "p-0",
+                                )
+                              : cn(
+                                  "break-words whitespace-pre-wrap max-w-[85%]",
+                                  isFullScreen ? "p-4 text-base max-w-[80%]" : "p-3 text-sm",
+                                  m.role === "user"
+                                    ? "bg-blue-600 text-white rounded-br-md"
+                                    : "bg-white dark:bg-gray-800 border rounded-bl-md",
+                                ),
+                          )}
+                        >
+                          {m.role === "ai"
+                            ? isTable
+                              ? renderMessageContent(m.text)
+                              : formatMessage(m.text)
+                            : formatMessage(m.text)}
+                        </div>
+                        {m.role === "user" && (
+                          <Avatar className="mt-1 h-8 w-8">
+                            <AvatarImage
+                              src={user?.avatar || undefined}
+                              alt={user?.name || user?.email || "User"}
+                            />
+                            <AvatarFallback className="bg-gray-500 text-white text-xs font-medium">
+                              {getInitials(
+                                user?.name || null,
+                                user?.email || null,
+                              )}
+                            </AvatarFallback>
+                          </Avatar>
+                        )}
                       </div>
-                      {m.role === "user" && (
-                        <Avatar className="mt-1 h-8 w-8">
-                          <AvatarImage
-                            src={user?.avatar || undefined}
-                            alt={user?.name || user?.email || "User"}
-                          />
-                          <AvatarFallback className="bg-gray-500 text-white text-xs font-medium">
-                            {getInitials(
-                              user?.name || null,
-                              user?.email || null,
-                            )}
-                          </AvatarFallback>
-                        </Avatar>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                   {isTyping && (
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <div className="flex space-x-1">
