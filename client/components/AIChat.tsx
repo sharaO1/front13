@@ -104,7 +104,13 @@ function parseDelimitedTable(
   text: string,
 ): { columns: string[]; rows: any[] } | null {
   const raw = text.trim();
-  const delimiter = raw.includes("\t") ? "\t" : raw.includes(";") ? ";" : raw.includes(",") ? "," : null;
+  const delimiter = raw.includes("\t")
+    ? "\t"
+    : raw.includes(";")
+      ? ";"
+      : raw.includes(",")
+        ? ","
+        : null;
   if (!delimiter) return null;
   const lines = raw.split(/\r?\n/).filter((l) => l.trim().length > 0);
   if (lines.length < 2) return null;
@@ -696,7 +702,8 @@ export default function AIChat({
                   onTouchMove={(e) => e.stopPropagation()}
                 >
                   {messages.map((m) => {
-                    const table = m.role === "ai" ? getStructuredTable(m.text) : null;
+                    const table =
+                      m.role === "ai" ? getStructuredTable(m.text) : null;
                     const isTable = !!table;
                     return (
                       <div
@@ -721,7 +728,9 @@ export default function AIChat({
                                 )
                               : cn(
                                   "break-words whitespace-pre-wrap max-w-[85%]",
-                                  isFullScreen ? "p-4 text-base max-w-[80%]" : "p-3 text-sm",
+                                  isFullScreen
+                                    ? "p-4 text-base max-w-[80%]"
+                                    : "p-3 text-sm",
                                   m.role === "user"
                                     ? "bg-blue-600 text-white rounded-br-md"
                                     : "bg-white dark:bg-gray-800 border rounded-bl-md",
