@@ -2372,7 +2372,7 @@ export default function Warehouse() {
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="name">
                       {t("warehouse.product_name")} *
@@ -2398,7 +2398,7 @@ export default function Warehouse() {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="category">
                       {t("warehouse.category")} *
@@ -2450,7 +2450,7 @@ export default function Warehouse() {
                     }
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="minStock">{t("warehouse.min_stock")}</Label>
                     <Input
@@ -2482,7 +2482,7 @@ export default function Warehouse() {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="costPrice">
                       {t("warehouse.cost_price")}
@@ -2520,7 +2520,7 @@ export default function Warehouse() {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="supplier">{t("warehouse.suppliers")}</Label>
                     <div className="flex flex-col">
@@ -2825,7 +2825,7 @@ export default function Warehouse() {
                 </Select>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -3006,7 +3006,7 @@ export default function Warehouse() {
                 </Button>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -3275,7 +3275,7 @@ export default function Warehouse() {
                 </div>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -3502,7 +3502,7 @@ export default function Warehouse() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="editName">
                   {t("warehouse.product_name")} *
@@ -3528,7 +3528,7 @@ export default function Warehouse() {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="editCategory">
                   {t("warehouse.category")} *
@@ -3575,7 +3575,7 @@ export default function Warehouse() {
                 }
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="editMinStock">{t("warehouse.min_stock")}</Label>
                 <Input
@@ -3607,7 +3607,7 @@ export default function Warehouse() {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="editCostPrice">
                   {t("warehouse.cost_price")}
@@ -3645,7 +3645,7 @@ export default function Warehouse() {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="editSupplier">{t("warehouse.suppliers")}</Label>
                 <div className="flex flex-col">
@@ -4359,7 +4359,7 @@ export default function Warehouse() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <div className="text-xs text-muted-foreground">
                     {t("warehouse.cost_price_label")}

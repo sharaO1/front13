@@ -30,7 +30,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/stores/authStore";
-import { useChatStore, ChatMessage } from "@/stores/chatStore";
+import { useChatStore, ChatMessage, EMPTY_MESSAGES } from "@/stores/chatStore";
 
 function formatMessage(t: string): string {
   if (!t) return "";
@@ -99,6 +99,33 @@ function parseMarkdownTable(
   return null;
 }
 
+// Parse CSV/TSV simple tables (first line headers)
+function parseDelimitedTable(
+  text: string,
+): { columns: string[]; rows: any[] } | null {
+  const raw = text.trim();
+  const delimiter = raw.includes("\t")
+    ? "\t"
+    : raw.includes(";")
+      ? ";"
+      : raw.includes(",")
+        ? ","
+        : null;
+  if (!delimiter) return null;
+  const lines = raw.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (lines.length < 2) return null;
+  const columns = lines[0].split(delimiter).map((s) => s.trim());
+  if (columns.length < 2) return null;
+  const rows = lines.slice(1).map((ln) => {
+    const cells = ln.split(delimiter).map((s) => s.trim());
+    const obj: Record<string, string> = {};
+    columns.forEach((c, i) => (obj[c] = cells[i] ?? ""));
+    return obj;
+  });
+  if (!rows.length) return null;
+  return { columns, rows };
+}
+
 function getStructuredTable(
   text: string,
 ): { columns: string[]; rows: any[] } | null {
@@ -137,6 +164,9 @@ function getStructuredTable(
   // 2) Markdown table fallback
   const md = parseMarkdownTable(text);
   if (md) return md;
+  // 3) CSV/TSV fallback
+  const del = parseDelimitedTable(text);
+  if (del) return del;
   return null;
 }
 
@@ -145,7 +175,7 @@ function renderMessageContent(text: string) {
   if (table) {
     const { columns, rows } = table;
     return (
-      <div className="overflow-x-auto max-w-full">
+      <div className="overflow-x-auto max-w-full w-full">
         <Table>
           <TableHeader>
             <TableRow>
@@ -250,6 +280,7 @@ export default function AIChat({
   const navigate = useNavigate();
   const accessToken = useAuthStore((s) => s.accessToken);
   const user = useAuthStore((s) => s.user);
+  const userId = user?.id || "anon";
 
   const initialMessages = useMemo<ChatMessage[]>(
     () => [
@@ -261,10 +292,15 @@ export default function AIChat({
     ],
     [],
   );
-  const messages = useChatStore((s) => s.messages);
-  const hydrated = useChatStore((s) => (s as any).hydrated);
+  const selectMessages = useMemo(
+    () => (s: any) => s.messagesByUser?.[userId] ?? EMPTY_MESSAGES,
+    [userId],
+  );
+  const messages = useChatStore(selectMessages);
+  const hydrated = useChatStore((s) => s.hydrated);
   const setStoreMessages = useChatStore((s) => s.setMessages);
   const replaceMessages = useChatStore((s) => s.replaceMessages);
+  const clearFor = useChatStore((s) => s.clear);
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
@@ -284,13 +320,61 @@ export default function AIChat({
   }, [messages, isTyping, scrollToBottom, isFullScreen]);
 
   // Initialize store with welcome message only after hydration if empty
+  const initRef = useRef<{ userId: string | null }>({ userId: null });
   useEffect(() => {
     if (!hydrated) return;
-    if (!messages || messages.length === 0) {
-      replaceMessages(initialMessages);
-    }
+    if (!user?.id) return; // wait for authenticated user to avoid saving under "anon"
+    if (initRef.current.userId === userId) return; // already initialized for this user
+
+    initRef.current.userId = userId;
+
+    // 1) if we have data under "anon" from earlier render, migrate it to this user
+    try {
+      const state = useChatStore.getState();
+      const anon = state.messagesByUser?.["anon"] || EMPTY_MESSAGES;
+      const existing = state.messagesByUser?.[userId] || EMPTY_MESSAGES;
+      if (anon.length && existing.length === 0) {
+        setTimeout(() => {
+          replaceMessages(anon, userId);
+          clearFor("anon");
+        }, 0);
+        return;
+      }
+    } catch {}
+
+    (async () => {
+      // 2) migrate legacy single-key storage if present
+      try {
+        const legacyRaw = localStorage.getItem("chat-storage");
+        if (legacyRaw) {
+          const parsed = JSON.parse(legacyRaw || "null");
+          const legacyMsgs = Array.isArray(parsed?.state?.messages)
+            ? (parsed.state.messages as ChatMessage[])
+            : [];
+          if (legacyMsgs.length) {
+            // only write if user has no messages yet
+            const state = useChatStore.getState();
+            const existing = state.messagesByUser?.[userId] || EMPTY_MESSAGES;
+            if (existing.length === 0) {
+              setTimeout(() => replaceMessages(legacyMsgs, userId), 0);
+            }
+            localStorage.removeItem("chat-storage");
+            return;
+          }
+        }
+      } catch {}
+
+      // 3) ensure default welcome message only if user has no messages
+      try {
+        const state = useChatStore.getState();
+        const existing = state.messagesByUser?.[userId] || EMPTY_MESSAGES;
+        if (existing.length === 0) {
+          setTimeout(() => replaceMessages(initialMessages, userId), 0);
+        }
+      } catch {}
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated]);
+  }, [hydrated, userId, user?.id]);
 
   useEffect(() => {
     if (isOpen) setTimeout(() => inputRef.current?.focus(), 50);
@@ -300,6 +384,7 @@ export default function AIChat({
     // Reset UI immediately
     replaceMessages(
       initialMessages.map((m) => ({ ...m, id: `welcome-${Date.now()}` })),
+      userId,
     );
     setInput("");
     setIsTyping(false);
@@ -319,16 +404,21 @@ export default function AIChat({
     async (fullText: string) => {
       setIsTyping(true);
       const id = `ai-${Date.now()}`;
-      setStoreMessages((prev) => [...prev, { id, role: "ai", text: "" }]);
+      setStoreMessages(
+        (prev) => [...prev, { id, role: "ai", text: "" }],
+        userId,
+      );
 
       await new Promise<void>((resolve) => {
         let i = 0;
         const interval = setInterval(() => {
           i += 1;
-          setStoreMessages((prev) =>
-            prev.map((m) =>
-              m.id === id ? { ...m, text: fullText.slice(0, i) } : m,
-            ),
+          setStoreMessages(
+            (prev) =>
+              prev.map((m) =>
+                m.id === id ? { ...m, text: fullText.slice(0, i) } : m,
+              ),
+            userId,
           );
           if (i >= fullText.length) {
             clearInterval(interval);
@@ -356,11 +446,10 @@ export default function AIChat({
         text: content,
       };
       const aiId = `ai-${Date.now()}`;
-      setStoreMessages((prev) => [
-        ...prev,
-        userMsg,
-        { id: aiId, role: "ai", text: "" },
-      ]);
+      setStoreMessages(
+        (prev) => [...prev, userMsg, { id: aiId, role: "ai", text: "" }],
+        userId,
+      );
       setInput("");
       setIsTyping(true);
 
@@ -396,8 +485,10 @@ export default function AIChat({
                 const { done, value } = await reader.read();
                 if (done) break;
                 acc += decoder.decode(value, { stream: true });
-                setStoreMessages((prev) =>
-                  prev.map((m) => (m.id === aiId ? { ...m, text: acc } : m)),
+                setStoreMessages(
+                  (prev) =>
+                    prev.map((m) => (m.id === aiId ? { ...m, text: acc } : m)),
+                  userId,
                 );
                 scrollToBottom(true);
               }
@@ -421,10 +512,12 @@ export default function AIChat({
                 textResp = await res.text();
               }
               if (typeof textResp === "string" && textResp.length > 0) {
-                setStoreMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === aiId ? { ...m, text: textResp } : m,
-                  ),
+                setStoreMessages(
+                  (prev) =>
+                    prev.map((m) =>
+                      m.id === aiId ? { ...m, text: textResp } : m,
+                    ),
+                  userId,
                 );
                 success = true;
                 break;
@@ -438,15 +531,17 @@ export default function AIChat({
         }
 
         if (!success) {
-          setStoreMessages((prev) =>
-            prev.map((m) =>
-              m.id === aiId
-                ? {
-                    ...m,
-                    text: "Failed connect to Network. Please check your Internet connection!!",
-                  }
-                : m,
-            ),
+          setStoreMessages(
+            (prev) =>
+              prev.map((m) =>
+                m.id === aiId
+                  ? {
+                      ...m,
+                      text: "Failed connect to Network. Please check your Internet connection!!",
+                    }
+                  : m,
+              ),
+            userId,
           );
         }
       } finally {
@@ -531,7 +626,7 @@ export default function AIChat({
                 : isFullScreen
                   ? "h-screen w-screen rounded-none"
                   : variant === "floating"
-                    ? "w-[min(92vw,384px)] sm:w-[384px] h-[560px] rounded-3xl"
+                    ? "w-[94vw] sm:w-[384px] h-[70dvh] sm:h-[560px] rounded-3xl"
                     : cn("w-full", height, "rounded-3xl"),
             )}
           >
@@ -577,7 +672,14 @@ export default function AIChat({
                     size="sm"
                     onClick={(e) => {
                       e.stopPropagation();
-                      // Hide chat only
+                      if (page) {
+                        // On dedicated chat page, close should leave the page
+                        // Prefer going back if possible; fallback to dashboard
+                        if (window.history.length > 1) navigate(-1);
+                        else navigate("/dashboard");
+                        return;
+                      }
+                      // In floating/docked mode, simply hide the chat
                       setIsFullScreen(false);
                       setIsOpen(false);
                     }}
@@ -599,50 +701,65 @@ export default function AIChat({
                   onWheel={(e) => e.stopPropagation()}
                   onTouchMove={(e) => e.stopPropagation()}
                 >
-                  {messages.map((m) => (
-                    <div
-                      key={m.id}
-                      className={cn(
-                        "flex gap-2",
-                        m.role === "user" ? "justify-end" : "justify-start",
-                      )}
-                    >
-                      {m.role === "ai" && (
-                        <div className="mt-1 h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow">
-                          <Bot className="h-4 w-4 text-white" />
-                        </div>
-                      )}
+                  {messages.map((m) => {
+                    const table =
+                      m.role === "ai" ? getStructuredTable(m.text) : null;
+                    const isTable = !!table;
+                    return (
                       <div
+                        key={m.id}
                         className={cn(
-                          "max-w-[85%] rounded-2xl leading-relaxed shadow break-words whitespace-pre-wrap",
-                          isFullScreen
-                            ? "p-4 text-base max-w-[80%]"
-                            : "p-3 text-sm",
-                          m.role === "user"
-                            ? "bg-blue-600 text-white rounded-br-md"
-                            : "bg-white dark:bg-gray-800 border rounded-bl-md",
+                          "flex gap-2",
+                          m.role === "user" ? "justify-end" : "justify-start",
                         )}
                       >
-                        {m.role === "ai"
-                          ? renderMessageContent(m.text)
-                          : formatMessage(m.text)}
+                        {m.role === "ai" && (
+                          <div className="mt-1 h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow">
+                            <Bot className="h-4 w-4 text-white" />
+                          </div>
+                        )}
+                        <div
+                          className={cn(
+                            "rounded-2xl leading-relaxed shadow",
+                            isTable
+                              ? cn(
+                                  "bg-white dark:bg-gray-800 border rounded-bl-md max-w-full w-full",
+                                  isFullScreen ? "p-0" : "p-0",
+                                )
+                              : cn(
+                                  "break-words whitespace-pre-wrap max-w-[85%]",
+                                  isFullScreen
+                                    ? "p-4 text-base max-w-[80%]"
+                                    : "p-3 text-sm",
+                                  m.role === "user"
+                                    ? "bg-blue-600 text-white rounded-br-md"
+                                    : "bg-white dark:bg-gray-800 border rounded-bl-md",
+                                ),
+                          )}
+                        >
+                          {m.role === "ai"
+                            ? isTable
+                              ? renderMessageContent(m.text)
+                              : formatMessage(m.text)
+                            : formatMessage(m.text)}
+                        </div>
+                        {m.role === "user" && (
+                          <Avatar className="mt-1 h-8 w-8">
+                            <AvatarImage
+                              src={user?.avatar || undefined}
+                              alt={user?.name || user?.email || "User"}
+                            />
+                            <AvatarFallback className="bg-gray-500 text-white text-xs font-medium">
+                              {getInitials(
+                                user?.name || null,
+                                user?.email || null,
+                              )}
+                            </AvatarFallback>
+                          </Avatar>
+                        )}
                       </div>
-                      {m.role === "user" && (
-                        <Avatar className="mt-1 h-8 w-8">
-                          <AvatarImage
-                            src={user?.avatar || undefined}
-                            alt={user?.name || user?.email || "User"}
-                          />
-                          <AvatarFallback className="bg-gray-500 text-white text-xs font-medium">
-                            {getInitials(
-                              user?.name || null,
-                              user?.email || null,
-                            )}
-                          </AvatarFallback>
-                        </Avatar>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                   {isTyping && (
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <div className="flex space-x-1">
