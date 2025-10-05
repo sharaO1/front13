@@ -620,7 +620,7 @@ export default function AIChat({
                 : isFullScreen
                   ? "h-screen w-screen rounded-none"
                   : variant === "floating"
-                    ? "w-[min(92vw,384px)] sm:w-[384px] h-[560px] rounded-3xl"
+                    ? "w-[94vw] sm:w-[384px] h-[70dvh] sm:h-[560px] rounded-3xl"
                     : cn("w-full", height, "rounded-3xl"),
             )}
           >
